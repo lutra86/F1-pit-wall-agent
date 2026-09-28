@@ -17,50 +17,10 @@ try:
 except ImportError:
     pass
 
-import tools_mac as mac
-import tools_f1 as f1
+from brain import think  # Aussie + mood mirror brain (needs openai pkg)
 
 BASE_DIR = Path(__file__).parent
 PORT = 8765
-
-SYSTEM = ("You are Pit-Wall Jarvis, an F1 race engineer. "
-          "Short radio replies, max 2 sentences. Start with 'Copy. '.")
-
-def ask_llm(text: str) -> str:
-    from openai import OpenAI
-    c = OpenAI(base_url="https://integrate.api.nvidia.com/v1",
-               api_key=os.getenv("NVIDIA_API_KEY"))
-    resp = c.chat.completions.create(
-        model=os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct"),
-        messages=[{"role": "system", "content": SYSTEM},
-                  {"role": "user", "content": text}],
-        max_tokens=150, temperature=0.6)
-    return resp.choices[0].message.content.strip()
-
-# local routing (same rules as main.py, stdlib-only so no heavy deps needed)
-import re
-
-def route(text: str):
-    t = text.lower()
-    m = re.search(r"volume.*?(\d+)", t)
-    if "volume" in t and m:
-        return mac.set_volume(int(m.group(1)))
-    if any(k in t for k in ("brightness", "dim", "bright")):
-        m2 = re.search(r"(\d+)", t)
-        return mac.set_brightness(int(m2.group(1)) if m2 else 70)
-    if any(k in t for k in ("pause", "play music", "next track", "previous")):
-        act = "next" if "next" in t else ("prev" if "prev" in t else "play")
-        return mac.media(act)
-    m3 = re.search(r"open (\w+)", t)
-    if m3:
-        return mac.open_app(m3.group(1).capitalize())
-    if "position" in t or "standings" in t or "who is leading" in t:
-        return "Copy. " + f1.session_positions()
-    if "weather" in t or "track temp" in t:
-        return "Copy. " + f1.weather()
-    if "latest session" in t or "what race" in t:
-        return "Copy. " + f1.latest_session_info()
-    return None
 
 class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -78,14 +38,11 @@ class Handler(SimpleHTTPRequestHandler):
             self._json({"reply": "Say again, driver?"})
             return
         if not os.getenv("NVIDIA_API_KEY"):
-            handled = route(text)
-            self._json({"reply": handled or
-                        "Copy — add NVIDIA_API_KEY in .env for full brain, "
-                        "but radio wall + local tools already work."})
+            reply, mood = think(text)
+            self._json({"reply": reply, "mood": mood})
             return
-        handled = route(text)
-        reply = handled if handled else ask_llm(text)
-        self._json({"reply": reply})
+        reply, mood = think(text)
+        self._json({"reply": reply, "mood": mood})
 
     def _json(self, obj):
         data = json.dumps(obj).encode()

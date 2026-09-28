@@ -32,7 +32,7 @@ HOTKEY_LABEL = {"alt_r": "RIGHT OPTION", "alt_l": "LEFT OPTION",
 STT_BACKEND = os.getenv("STT_BACKEND", "auto")  # auto | parakeet | whisper
 PARAKEET_MODEL = os.getenv("PARAKEET_MODEL", "nvidia/parakeet-tdt-0.6b-v2")
 WHISPER_MODEL = "tiny.en"      # fallback local STT (downloaded once, ~75MB).
-TTS_VOICE = os.getenv("TTS_VOICE", "en-GB-RyanNeural")
+TTS_VOICE = os.getenv("TTS_VOICE", "en-AU-WilliamNeural")
 NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct")
 SAMPLE_RATE = 16000
 # ----------------------------------------
@@ -107,62 +107,8 @@ def transcribe(wav_path: str) -> str:
     return "".join(s.text for s in segments).strip()
 
 
-# ---------- brain ----------
-SYSTEM = ("You are Pit-Wall Jarvis, an F1 race engineer. "
-          "Short radio replies, max 2 sentences. Start with 'Copy. '.")
-
-
-def route(text: str):
-    t = text.lower()
-    m = re.search(r"volume.*?(\d+)", t)
-    if "volume" in t and m:
-        return mac.set_volume(int(m.group(1)))
-    if any(k in t for k in ("brightness", "dim", "bright")):
-        m2 = re.search(r"(\d+)", t)
-        return mac.set_brightness(int(m2.group(1)) if m2 else 70)
-    if any(k in t for k in ("pause", "play music", "next track", "previous")):
-        act = "next" if "next" in t else ("prev" if "prev" in t else "play")
-        return mac.media(act)
-    m3 = re.search(r"open (\w+)", t)
-    if m3:
-        return mac.open_app(m3.group(1).capitalize())
-    if "position" in t or "standings" in t or "who is leading" in t:
-        return "Copy. " + f1.session_positions()
-    if "weather" in t or "track temp" in t:
-        return "Copy. " + f1.weather()
-    if "latest session" in t or "what race" in t:
-        return "Copy. " + f1.latest_session_info()
-    m4 = re.search(r"car (\d+).*lap|lap.*car (\d+)|driver (\d+)", t)
-    if m4:
-        num = next(g for g in m4.groups() if g)
-        return "Copy. " + f1.driver_laps(int(num))
-    if t.startswith("write ") or "write file" in t:
-        p = BASE_DIR / "note.txt"
-        p.write_text(text)
-        return f"Copy, written to {p.name}."
-    return None
-
-
-def ask_llm(text: str) -> str:
-    from openai import OpenAI
-    c = OpenAI(base_url="https://integrate.api.nvidia.com/v1",
-               api_key=os.getenv("NVIDIA_API_KEY"))
-    resp = c.chat.completions.create(
-        model=NVIDIA_MODEL,
-        messages=[{"role": "system", "content": SYSTEM},
-                  {"role": "user", "content": text}],
-        max_tokens=150, temperature=0.6)
-    return resp.choices[0].message.content.strip()
-
-
-def think(text: str) -> str:
-    handled = route(text)
-    if handled:
-        return handled
-    if not os.getenv("NVIDIA_API_KEY"):
-        return ("Copy — I heard you, but add NVIDIA_API_KEY to .env "
-                "for full answers. Local tools already work.")
-    return ask_llm(text)
+# ---------- brain (shared, Aussie + mood mirror) ----------
+from brain import think  # noqa: E402  (needs sys.path = script dir)
 
 
 # ---------- speech-out ----------
@@ -253,7 +199,8 @@ def _pipeline():
     events.put(("you", heard))
     events.put(("status", "THINKING…"))
     try:
-        reply = think(heard)
+        reply, mood = think(heard)
+        print(f"[jarvis] mood: {mood}", flush=True)
     except Exception as e:
         reply = f"Copy — brain error: {e}"
     events.put(("jarvis", reply))
@@ -378,7 +325,7 @@ if __name__ == "__main__":
         # Self-test: overlay + simulated exchange, no mic/hotkey needed.
         ov = Overlay()
         ov.after(400, lambda: (events.put(("you", "who is leading?")),
-                               events.put(("jarvis", think("who is leading?")))))
+                               events.put(("jarvis", think("who is leading?")[0]))))
         ov.after(600, lambda: print("GEOMETRY:", ov.winfo_geometry(),
                                     "MAPPED:", ov.winfo_ismapped()))
         ov.after(2500, ov.destroy)
