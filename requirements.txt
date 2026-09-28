@@ -1,0 +1,15 @@
+# F1 Jarvis install — everyone runs this:
+#   pip install -r requirements.txt
+openai>=1.0.0
+edge-tts>=6.1.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+sounddevice>=0.5.0
+pynput>=1.7.0
+numpy>=1.24.0
+# --- speech-to-text (pick one, Parakeet v2 recommended) ---
+# Option A — NVIDIA Parakeet v2 (best accuracy, offline after download):
+#   pip install "nemo_toolkit[asr]" torch
+#   (auto-downloads nvidia/parakeet-tdt-0.6b-v2 on first talk, ~2.4GB)
+# Option B — lightweight fallback whisper:
+faster-whisper>=1.0.0
