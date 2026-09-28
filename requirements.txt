@@ -12,7 +12,6 @@ numpy>=1.24.0
 faster-whisper>=1.0.0
 # --- voices (TTS_BACKEND picks primary, auto-falls back down the list) ---
 edge-tts>=6.1.0
-kokoro-onnx>=0.1.0        # local Kokoro-82M q4 (~0.9s, offline, bm_george male)
+kokoro-onnx>=0.1.0        # local Kokoro-82M q4 (~1-3s, offline, bm_george male)
 soundfile>=0.12.0
-google-cloud-texttospeech>=2.0.0  # Chirp 3 HD en-AU (needs GCP key+billing)
 # espeak-ng needed for Kokoro phonemes:  brew install espeak-ng

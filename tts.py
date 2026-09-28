@@ -1,17 +1,13 @@
-"""TTS router: chirp (Google AU bloke) -> kokoro (local) -> edge (fallback).
+"""TTS router: kokoro (local) -> edge (free fallback) -> say (offline).
 
-TTS_BACKEND env picks primary: chirp | kokoro | edge. Failures fall down
-the chain automatically. Every backend prints time-to-first-audio.
-
-Google Chirp needs credentials (service account JSON, billing enabled):
-  export GOOGLE_APPLICATION_CREDENTIALS=/path/to/gcp-key.json
+TTS_BACKEND env picks primary: kokoro | edge. Failures fall down
+the chain automatically. Every backend prints synthesis timing.
 """
 import os
 import subprocess
 import time
 
-TTS_BACKEND = os.getenv("TTS_BACKEND", "chirp")
-CHIRP_VOICE = os.getenv("CHIRP_VOICE", "en-AU-Chirp-HD-D")
+TTS_BACKEND = os.getenv("TTS_BACKEND", "kokoro")
 KOKORO_VOICE = os.getenv("KOKORO_VOICE", "bm_george")  # closest male, UK
 EDGE_VOICE = os.getenv("TTS_VOICE", "en-AU-WilliamMultilingualNeural")
 
@@ -102,42 +98,6 @@ def speak_kokoro(text: str):
     return "kokoro"
 
 
-def speak_chirp(text: str):
-    """Google Chirp 3 HD, streaming straight into ffplay."""
-    from google.cloud import texttospeech
-    t0 = time.time()
-    client = texttospeech.TextToSpeechClient()
-    voice = texttospeech.VoiceSelectionParams(
-        language_code="en-AU", name=CHIRP_VOICE)
-    stream_cfg = texttospeech.StreamingSynthesizeConfig(
-        voice=voice,
-        streaming_audio_config=texttospeech.StreamingAudioConfig(
-            audio_encoding=texttospeech.AudioEncoding.OGG_OPUS))
-    first = True
-
-    def requests():
-        yield texttospeech.StreamingSynthesizeRequest(
-            streaming_config=stream_cfg)
-        yield texttospeech.StreamingSynthesizeRequest(
-            input=texttospeech.StreamingSynthesisInput(text=text))
-
-    proc = subprocess.Popen(
-        ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet",
-         "-i", "pipe:0"],
-        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL)
-    for resp in client.streaming_synthesize(requests()):
-        if resp.audio_content:
-            if first:
-                print(f"[tts] chirp first audio after {time.time()-t0:.1f}s",
-                      flush=True)
-                first = False
-            proc.stdin.write(resp.audio_content)
-    proc.stdin.close()
-    proc.wait()
-    return "chirp"
-
-
 async def _edge_stream(text: str):
     import edge_tts
     comm = edge_tts.Communicate(text, EDGE_VOICE)
@@ -167,10 +127,9 @@ def speak_edge(text: str):
 
 def speak_text(text: str) -> str:
     """Speak via primary backend, falling down the chain. Returns backend."""
-    order = {"chirp": ["chirp", "kokoro", "edge"],
-             "kokoro": ["kokoro", "edge"],
-             "edge": ["edge"]}.get(TTS_BACKEND, ["chirp", "kokoro", "edge"])
-    fns = {"chirp": speak_chirp, "kokoro": speak_kokoro, "edge": speak_edge}
+    order = {"kokoro": ["kokoro", "edge"],
+             "edge": ["edge"]}.get(TTS_BACKEND, ["kokoro", "edge"])
+    fns = {"kokoro": speak_kokoro, "edge": speak_edge}
     last = None
     for name in order:
         try:
@@ -190,10 +149,10 @@ if __name__ == "__main__":
     sample = sys.argv[1] if len(sys.argv) > 1 else \
         "Copy, mate. Voice check, send it."
     only = sys.argv[2] if len(sys.argv) > 2 else None
-    for name in ([only] if only else ["kokoro", "chirp", "edge"]):
+    for name in ([only] if only else ["kokoro", "edge"]):
         try:
             t0 = time.time()
-            used = {"kokoro": speak_kokoro, "chirp": speak_chirp,
+            used = {"kokoro": speak_kokoro,
                     "edge": speak_edge}[name](sample)
             print(f"{used}: total {time.time()-t0:.1f}s")
         except Exception as e:
