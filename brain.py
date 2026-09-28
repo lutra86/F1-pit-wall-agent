@@ -69,14 +69,14 @@ def detect_mood(text: str) -> str:
 def ask_llm(text: str, mood: str = "chill") -> str:
     from openai import OpenAI
     c = OpenAI(base_url="https://integrate.api.nvidia.com/v1",
-               api_key=os.getenv("NVIDIA_API_KEY"))
+               api_key=os.getenv("NVIDIA_API_KEY"), timeout=30)
     system = SYSTEM_AUSSIE + " " + (MOOD_FERAL if mood == "feral"
                                     else MOOD_CHILL)
     resp = c.chat.completions.create(
         model=NVIDIA_MODEL,
         messages=[{"role": "system", "content": system},
                   {"role": "user", "content": text}],
-        max_tokens=150, temperature=0.8 if mood == "feral" else 0.6)
+        max_tokens=80, temperature=0.8 if mood == "feral" else 0.6)
     return resp.choices[0].message.content.strip()
 
 
@@ -118,6 +118,7 @@ def route(text: str, mood: str = "chill"):
 
 def think(text: str):
     """Returns (reply, mood). Full pipeline: tools first, LLM second."""
+    import time
     mood = detect_mood(text)
     handled = route(text, mood)
     if handled:
@@ -125,7 +126,9 @@ def think(text: str):
     if not os.getenv("NVIDIA_API_KEY"):
         return ("Copy — I heard you, mate, but add NVIDIA_API_KEY to .env "
                 "for full answers. Local tools already work."), mood
+    t0 = time.time()
     reply = ask_llm(text, mood)
+    print(f"[jarvis] brain took {time.time()-t0:.1f}s", flush=True)
     if mood == "feral":
         reply = feral_wrap(reply)
     return reply, mood

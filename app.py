@@ -116,6 +116,38 @@ def play(path: Path):
     subprocess.run(["afplay", str(path)], capture_output=True)
 
 
+_BEEP_DATA, _BEEP_RATE = None, None
+
+def preload_beep():
+    """Decode the F1 beep once at startup so it fires instantly on keypress
+    (spawning afplay each time costs ~half a second)."""
+    global _BEEP_DATA, _BEEP_RATE
+    try:
+        import numpy as np
+        raw = subprocess.run(
+            ["ffmpeg", "-v", "error", "-i", str(BEEP),
+             "-ar", "44100", "-ac", "1", "-f", "f32le", "-"],
+            capture_output=True, check=True).stdout
+        _BEEP_DATA = np.frombuffer(raw, dtype=np.float32)
+        _BEEP_RATE = 44100
+        print("[jarvis] beep preloaded, fires instantly.", flush=True)
+    except Exception as e:
+        print(f"[jarvis] beep preload failed ({e}), using afplay fallback.",
+              flush=True)
+
+
+def beep_now():
+    """Fire the beep immediately (non-blocking)."""
+    try:
+        if _BEEP_DATA is not None:
+            import sounddevice as sd
+            sd.play(_BEEP_DATA, _BEEP_RATE)
+            return
+    except Exception:
+        pass
+    threading.Thread(target=play, args=(BEEP,), daemon=True).start()
+
+
 async def _speak(text: str):
     import edge_tts
     await edge_tts.Communicate(text, TTS_VOICE).save(str(REPLY_MP3))
@@ -154,8 +186,10 @@ def pick_input_device():
 def start_talk():
     if recording["active"]:
         return
+    import time
+    print(f"[jarvis] key down → beep", flush=True)
+    beep_now()  # instant, non-blocking
     events.put(("status", "LISTENING… release to send"))
-    threading.Thread(target=play, args=(BEEP,), daemon=True).start()
 
     import time
     import sounddevice as sd
@@ -404,6 +438,7 @@ if __name__ == "__main__":
         print("If the hotkey does nothing: macOS Settings → Privacy &", flush=True)
         print("Security → Input Monitoring → turn ON your Terminal.", flush=True)
         print("=" * 52, flush=True)
+        preload_beep()
         threading.Thread(target=hotkey_loop, daemon=True).start()
         try:
             Overlay().mainloop()
