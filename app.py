@@ -54,6 +54,7 @@ import tools_f1 as f1
 
 events: "queue.Queue[tuple]" = queue.Queue()  # (kind, text)
 recording = {"active": False, "frames": []}
+ui = None  # Overlay instance, set at startup
 _stt = {"backend": None, "model": None}
 
 
@@ -163,6 +164,11 @@ def speak(text: str):
         events.put(("status", "online voice failed — offline voice…"))
         from platform_ctl import offline_say
         offline_say(text)
+    try:
+        if ui is not None:
+            ui.drop_back()  # behind windows again until next press
+    except Exception:
+        pass
     events.put(("status", f"READY — hold {HOTKEY_LABEL} to talk"))
 
 
@@ -195,6 +201,11 @@ def start_talk():
     import time
     print(f"[jarvis] key down → beep", flush=True)
     beep_now()  # instant, non-blocking
+    try:
+        if ui is not None:
+            ui.pop_up()  # above everything while we talk
+    except Exception:
+        pass
     events.put(("status", "LISTENING… release to send"))
 
     import time
@@ -543,6 +554,21 @@ class Overlay(tk.Tk):
             self.after(150, self._pump)
 
     # ----- mouse: drag anywhere, hold footer to talk, right-click quits -----
+    def pop_up(self):
+        """Above everything (called on hotkey press). No focus steal."""
+        try:
+            self.attributes("-topmost", True)
+            self.lift()
+        except Exception:
+            pass
+
+    def drop_back(self):
+        """Behind windows until next press (app keeps running)."""
+        try:
+            self.attributes("-topmost", False)
+            self.lower()
+        except Exception:
+            pass
     def _down(self, e):
         self._press = [e.x, e.y, False]
         if e.y >= getattr(self, "_footer_top", 10**9):
@@ -604,7 +630,10 @@ if __name__ == "__main__":
         threading.Thread(target=preload_voices, daemon=True).start()
         threading.Thread(target=hotkey_loop, daemon=True).start()
         try:
-            Overlay().mainloop()
+            ov = Overlay()
+            ui = ov
+            ov.drop_back()  # start behind windows; pops up on press
+            ov.mainloop()
         except Exception:
             import traceback
             traceback.print_exc()

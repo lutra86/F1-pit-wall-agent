@@ -4,7 +4,7 @@ import urllib.request
 from html.parser import HTMLParser
 
 
-def web_search(query: str, n: int = 3) -> str:
+def web_search(query: str, n: int = 5) -> str:
     """Short DuckDuckGo results: title — snippet — url."""
     try:
         from ddgs import DDGS

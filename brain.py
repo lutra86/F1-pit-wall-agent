@@ -69,18 +69,32 @@ def detect_mood(text: str) -> str:
     return "chill"
 
 
-def ask_llm(text: str, mood: str = "chill") -> str:
+def ask_llm(text: str, mood: str = "chill", context: str = "") -> str:
     from openai import OpenAI
     c = OpenAI(base_url="https://integrate.api.nvidia.com/v1",
                api_key=os.getenv("NVIDIA_API_KEY"), timeout=30)
     system = SYSTEM_AUSSIE + " " + (MOOD_FERAL if mood == "feral"
                                     else MOOD_CHILL)
+    msgs = [{"role": "system", "content": system}]
+    if context:
+        msgs.append({"role": "user",
+                     "content": "Live web info for my next question "
+                                f"(use it, stay short): {context}"})
+    msgs.append({"role": "user", "content": text})
     resp = c.chat.completions.create(
-        model=NVIDIA_MODEL,
-        messages=[{"role": "system", "content": system},
-                  {"role": "user", "content": text}],
+        model=NVIDIA_MODEL, messages=msgs,
         max_tokens=80, temperature=0.8 if mood == "feral" else 0.6)
     return resp.choices[0].message.content.strip()
+
+
+LIVE_HINTS = ("latest", "now", "today", "tonight", "current", "live",
+              "score", "standing", "winner", "who won", "news", "weather",
+              "happening", "result")
+
+
+def looks_live(text: str) -> bool:
+    t = text.lower()
+    return any(h in t for h in LIVE_HINTS)
 
 
 def route(text: str, mood: str = "chill"):
@@ -111,11 +125,6 @@ def route(text: str, mood: str = "chill"):
     if m4:
         num = next(g for g in m4.groups() if g)
         return "Copy. " + f1.driver_laps(int(num))
-    m5 = re.search(r"(search|google|look up|look-up|find out)( for)? (.+)", t)
-    if m5:
-        return "Copy. " + web.web_search(m5.group(3))
-    if "latest" in t or "news" in t or "headline" in t:
-        return "Copy. " + web.web_search(text)
     m6 = re.search(r"(read|open) (page|site|url|link) (\S+)", t)
     if m6:
         return "Copy. " + web.read_page(m6.group(3))
@@ -145,7 +154,15 @@ def think(text: str):
         return ("Copy — I heard you, mate, but add NVIDIA_API_KEY to .env "
                 "for full answers. Local tools already work."), mood
     t0 = time.time()
-    reply = ask_llm(text, mood)
+    m5 = re.search(r"(search|google|look up|look-up|find out)( for)? (.+)",
+                   text.lower())
+    if m5:
+        ctx = web.web_search(m5.group(3), n=5)
+    elif looks_live(text):
+        ctx = web.web_search(text, n=5)
+    else:
+        ctx = ""
+    reply = ask_llm(text, mood, context=ctx)
     print(f"[jarvis] brain took {time.time()-t0:.1f}s", flush=True)
     if mood == "feral":
         reply = feral_wrap(reply)
