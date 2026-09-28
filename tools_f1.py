@@ -71,10 +71,57 @@ def championship(top_n: int = 3) -> str:
         return f"Championship unavailable: {e}"
 
 
+JOLPI = "https://api.jolpi.ca/ergast/f1"  # free Ergast mirror, no key
+
+
+def _jolpi(path: str):
+    import json
+    import urllib.request
+    with urllib.request.urlopen(JOLPI + path, timeout=12) as r:
+        return json.loads(r.read())["MRData"]
+
+
+def last_race() -> str:
+    """Official last-race result: winner + podium."""
+    try:
+        race = _jolpi("/current/last/results.json")["RaceTable"]["Races"][0]
+        top = [f"{x['position']}. {x['Driver']['code']} "
+               f"({x['Constructor']['name']})"
+               for x in race["Results"][:3]]
+        return f"Last race, {race['raceName']} {race['season']}: " + ", ".join(top)
+    except Exception as e:
+        return f"Last race unavailable: {str(e)[:80]}"
+
+
+def season_table(top_n: int = 3) -> str:
+    """Official drivers' standings."""
+    try:
+        lst = _jolpi("/current/driverStandings.json")["StandingsTable"][
+            "StandingsLists"][0]["DriverStandings"][:top_n]
+        bits = [f"{d['Driver']['code']} {d['points']}pts" for d in lst]
+        return "Standings: " + ", ".join(bits)
+    except Exception as e:
+        return championship(top_n)  # OpenF1 fallback
+
+
+def next_race() -> str:
+    try:
+        from datetime import date
+        sched = _jolpi("/current.json")["RaceTable"]["Races"]
+        upcoming = [r for r in sched if r["date"] >= str(date.today())]
+        if not upcoming:
+            return "Season's done, mate."
+        r = upcoming[0]
+        return f"Next up: {r['raceName']} on {r['date']}."
+    except Exception as e:
+        return f"Schedule unavailable: {str(e)[:80]}"
+
+
 def live_brief() -> str:
     """One-block 2026 reality check for the LLM: latest session + order."""
     try:
         return (latest_session_info() + " || " +
-                session_positions(top_n=5) + " || " + weather())
+                session_positions(top_n=5) + " || " + weather() + " || " +
+                last_race())
     except Exception as e:
         return f"Paddock feed down: {e}"

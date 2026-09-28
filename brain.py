@@ -153,7 +153,13 @@ def route(text: str, mood: str = "chill"):
     if m3:
         return mac.open_app(m3.group(1).capitalize())
     if any(k in t for k in ("championship", "standings", "constructor")):
-        return "Copy. " + f1.championship()
+        return "Copy. " + f1.season_table()
+    if any(k in t for k in ("last race", "who won", "results",
+                            "what happened")):
+        return "Copy. " + f1.last_race()
+    if any(k in t for k in ("next race", "when is", "schedule", "calendar",
+                            "upcoming")):
+        return "Copy. " + f1.next_race()
     if "position" in t or "who is leading" in t:
         r = "Copy. " + f1.session_positions()
         return (r + " Happy now?" if f else r)
