@@ -122,10 +122,27 @@ def play(path: Path):
 
 _BEEP_DATA, _BEEP_RATE = None, None
 
+def ensure_beep():
+    """Everyone generates their own beep locally (repo ships none)."""
+    if BEEP.exists():
+        return
+    try:
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-f", "lavfi",
+             "-i", "sine=frequency=880:duration=0.9",
+             "-af", "afade=t=out:st=0.6:d=0.3", str(BEEP)],
+            check=True, capture_output=True)
+        print("[jarvis] generated local beep.", flush=True)
+    except Exception as e:
+        print(f"[jarvis] no beep available ({e}) — talk still works.",
+              flush=True)
+
 def preload_beep():
     """Decode the F1 beep once at startup so it fires instantly on keypress
     (spawning afplay each time costs ~half a second)."""
     global _BEEP_DATA, _BEEP_RATE
+    if not BEEP.exists():
+        return
     try:
         import numpy as np
         raw = subprocess.run(
@@ -621,6 +638,7 @@ if __name__ == "__main__":
         print("If the hotkey does nothing: macOS Settings → Privacy &", flush=True)
         print("Security → Input Monitoring → turn ON your Terminal.", flush=True)
         print("=" * 52, flush=True)
+        ensure_beep()
         preload_beep()
         threading.Thread(target=preload_voices, daemon=True).start()
         threading.Thread(target=hotkey_loop, daemon=True).start()

@@ -7,6 +7,7 @@ requests>=2.31.0
 sounddevice>=0.5.0
 pynput>=1.7.0
 numpy>=1.24.0
+SpeechRecognition>=3.10.0  # legacy terminal client (main.py) only
 # --- speech-to-text (Parakeet v2 if nemo installed, else whisper) ---
 #   pip install "nemo_toolkit[asr]" torch   # optional Parakeet upgrade
 faster-whisper>=1.0.0
