@@ -365,82 +365,233 @@ def hotkey_loop():
 
 
 # ---------- see-through side overlay ----------
+GOLD = "#f5c518"
+GREEN = "#7ee787"
+INK = "#0a0a0a"
+GREY = "#888888"
+CARD_W = 340
+
+
+def _rr(cv, x0, y0, x1, y1, r, **kw):
+    pts = [x0+r, y0, x1-r, y0, x1-r, y0, x1, y0, x1, y0+r, x1, y0+r,
+           x1, y1-r, x1, y1-r, x1, y1, x1-r, y1, x1-r, y1, x0+r, y1,
+           x0+r, y1, x0, y1, x0, y1-r, x0, y1-r, x0, y0+r, x0, y0+r,
+           x0, y0]
+    return cv.create_polygon(pts, smooth=True, **kw)
+
+
 class Overlay(tk.Tk):
+    """ENGINEER radio card (see mockup): latest exchange only, live timer,
+    freq bars. Drag to move, hold footer to talk, right-click to quit."""
+
     def __init__(self):
         super().__init__()
-        self.title("Pit-Wall Jarvis")
+        self.title("Engineer")
         self.configure(bg="black")
-        self.attributes("-topmost", True)   # stays above game/other apps
-        self.attributes("-alpha", 0.82)     # see-through
-        self.overrideredirect(True)         # borderless side strip
-        w, h = 340, 560
-        x = self.winfo_screenwidth() - w - 12
-        y = int((self.winfo_screenheight() - h) / 2)
-        self.geometry(f"{w}x{h}+{x}+{y}")
+        self.attributes("-topmost", True)
+        self.attributes("-alpha", 0.88)
+        self.overrideredirect(True)
+        x = self.winfo_screenwidth() - CARD_W - 12
+        self._x = x
+        self._y = int((self.winfo_screenheight() - 400) / 2)
+        self.geometry(f"{CARD_W}x400+{x}+{self._y}")
 
-        head = tk.Label(self, text="≡ PIT-WALL  (drag me)   [X]",
-                        bg="black", fg="#f5c518",
-                        font=("Arial", 12, "bold"))
-        head.pack(fill="x", padx=8, pady=(8, 2))
-        head.bind("<ButtonPress-1>", self._dragstart)
-        head.bind("<B1-Motion>", self._dragmove)
-        # click [X] area to quit
-        head.bind("<ButtonRelease-1>", self._maybe_quit)
+        self.cv = tk.Canvas(self, bg="black", highlightthickness=0)
+        self.cv.pack(fill="both", expand=True)
 
-        self.status = tk.Label(self, text=f"READY — hold {HOTKEY_LABEL} to talk",
-                               bg="black", fg="#888",
-                               font=("Arial", 11), wraplength=310,
-                               justify="left")
-        self.status.pack(fill="x", padx=10)
+        self.f_head = ("Helvetica", 20, "bold italic")
+        self.f_label = ("Helvetica", 10, "bold")
+        self.f_msg = ("Helvetica", 15, "bold italic")
+        self.f_hint = ("Helvetica", 10)
+        self.f_time = ("Helvetica", 15, "bold")
 
-        self.log = tk.Text(self, bg="black", fg="white",
-                           font=("Arial", 13), wrap="word",
-                           relief="flat", highlightthickness=0,
-                           state="disabled")
-        self.log.pack(fill="both", expand=True, padx=10, pady=6)
-        self.log.tag_config("you", foreground="#7ee787")
-        self.log.tag_config("jarvis", foreground="#f5c518")
+        self.driver_text = "standing by…"
+        self.eng_text = "Radio check. Talk to me, mate."
+        self.state = "ready"       # ready|listening|thinking|speaking
+        self.t0 = None             # exchange timer start
+        self.elapsed = 0.0
+        self._press = None         # (x, y, talking?) for drag vs hold-talk
 
-        talk = tk.Button(self, text="HOLD TO TALK (backup)",
-                         bg="#f5c518", fg="black",
-                         font=("Arial", 12, "bold"), relief="flat")
-        talk.pack(fill="x", padx=10, pady=(0, 10))
-        talk.bind("<ButtonPress-1>", lambda e: start_talk())
-        talk.bind("<ButtonRelease-1>", lambda e: stop_talk())
+        self.cv.bind("<ButtonPress-1>", self._down)
+        self.cv.bind("<B1-Motion>", self._move)
+        self.cv.bind("<ButtonRelease-1>", self._up)
+        self.cv.bind("<Button-3>", lambda e: self.destroy())
 
-        self._drag = None
+        self._draw()
+        self.after(120, self._tick)
         self.after(150, self._pump)
 
-    def _dragstart(self, e):
-        self._drag = (e.x, e.y)
+    # ----- text wrap -----
+    def _wrap(self, text, px=272, max_lines=6):
+        import tkinter.font as tkfont
+        f = tkfont.Font(font=self.f_msg)
+        words, lines, cur = text.split(), [], ""
+        for wd in words:
+            trial = (cur + " " + wd).strip()
+            if f.measure(trial) <= px:
+                cur = trial
+            else:
+                lines.append(cur)
+                cur = wd
+        lines.append(cur)
+        if len(lines) > max_lines:
+            lines = lines[:max_lines]
+            lines[-1] = lines[-1][:60].rstrip() + "…"
+        return lines
 
-    def _dragmove(self, e):
-        if self._drag:
-            self.geometry(f"+{e.x_root - self._drag[0]}+{e.y_root - self._drag[1]}")
+    # ----- draw (two-pass so corners stay round) -----
+    def _draw(self):
+        import tkinter.font as tkfont
+        cv = self.cv
+        W, pad = CARD_W, 14
 
-    def _maybe_quit(self, e):
-        if e.x > self.winfo_width() - 40:  # clicked [X]
-            self.destroy()
+        d_lines = self._wrap(self.driver_text)
+        e_lines = self._wrap(self.eng_text)
+        y = 12 + 46 + 14 + 18 + (len(d_lines) * 22 + 24) + 6 + 18
+        e_top = y
+        y += len(e_lines) * 22 + 24
+        bars_y = y + 14
+        hint_y = bars_y + 34
+        h = int(max(300, min(hint_y + 32, 640)))
 
-    def say(self, who, text):
-        self.log.configure(state="normal")
-        prefix = "YOU: " if who == "you" else "PIT-WALL: "
-        self.log.insert("end", prefix + text + "\n\n", who)
-        self.log.see("end")
-        self.log.configure(state="disabled")
+        cv.delete("all")
+        _rr(cv, 2, 2, W-2, h-2, 18, outline=GOLD, width=2, fill=INK)
+
+        # header: red dot + ENGINEER + timer
+        y = 12
+        dot = "#ff2d2d" if self.state in ("listening", "speaking") else "#5a1515"
+        cv.create_oval(pad+4, y+10, pad+20, y+26, fill=dot, outline="")
+        cv.create_text(pad+28, y+4, text="ENGINEER", font=self.f_head,
+                       fill="white", anchor="nw")
+        mm, ss = divmod(int(self.elapsed), 60)
+        cv.create_text(W-pad, y+8, text=f"{mm}:{ss:02d}", font=self.f_time,
+                       fill=GREY, anchor="ne")
+        y += 46
+        cv.create_line(pad, y, W-pad, y, fill=GOLD, width=2)
+        y += 14
+
+        y = self._bubble_lines("DRIVER", d_lines, GREEN, y, pad, W)
+        y += 6
+        y = self._bubble_lines("ENGINEER", e_lines, GOLD, y, pad, W)
+
+        # footer: freq bars + hint
+        self._bars_y = bars_y
+        n, bw, gap = 32, 5, 4
+        x0 = (W - (n * (bw + gap) - gap)) / 2
+        self._bar_ids, self._bar_x = [], []
+        for i in range(n):
+            x = x0 + i * (bw + gap)
+            self._bar_x.append(x)
+            self._bar_ids.append(
+                cv.create_line(x, bars_y+26, x, bars_y+26,
+                               fill=GOLD, width=bw))
+        cv.create_text(W/2, hint_y, text=f"hold {HOTKEY_LABEL} to talk",
+                       font=self.f_hint, fill=GREY)
+
+        self._footer_top = bars_y - 6
+        self.geometry(f"{CARD_W}x{h}+{self._x}+{self._y}")
+        cv.configure(height=h)
+        self._paint_bars(static=True)
+
+    def _bubble_lines(self, who, lines, color, y, pad, W):
+        cv = self.cv
+        cv.create_text(pad+4, y, text=who, font=self.f_label, fill=GREY,
+                       anchor="nw")
+        y += 18
+        bh = len(lines) * 22 + 24
+        _rr(cv, pad, y, W-pad, y+bh, 12, outline=GOLD, width=1.5, fill=INK)
+        ty = y + 12
+        for ln in lines:
+            cv.create_text(pad+14, ty, text=ln, font=self.f_msg,
+                           fill=color, anchor="nw")
+            ty += 22
+        return y + bh
+
+    def _bubble(self, who, text, color, y, pad, W):
+        return self._bubble_lines(who, self._wrap(text), color, y, pad, W)
+
+    # ----- freq bars -----
+    def _paint_bars(self, static=False):
+        import math
+        import random
+        energy = {"listening": 1.0, "speaking": 0.9, "thinking": 0.45,
+                  "ready": 0.07}.get(self.state, 0.07)
+        yb = self._bars_y + 26
+        for i, (bid, x) in enumerate(zip(self._bar_ids, self._bar_x)):
+            wave = (0.5 + 0.5 * math.sin(i * 0.7)) if static \
+                else random.random()
+            self.cv.coords(bid, x, yb, x, yb - (2 + wave * 26 * energy))
+
+    # ----- loops -----
+    def _tick(self):
+        import time
+        if self.t0 is not None:
+            self.elapsed = time.time() - self.t0
+        self._draw_header_only()
+        self._paint_bars()
+        if self.winfo_exists():
+            self.after(120, self._tick)
+
+    def _draw_header_only(self):
+        # cheap refresh: full redraw is fine at 8fps for this tiny card
+        pos = self.geometry().split("+", 1)[1]
+        xs, ys = pos.split("+")[0], pos.split("+")[1]
+        self._x, self._y = int(xs), int(ys)
+        self._draw()
 
     def _pump(self):
+        import time
         try:
             while True:
                 kind, text = events.get_nowait()
                 if kind == "status":
-                    self.status.configure(text=text)
-                else:
-                    self.say(kind, text)
+                    s = text
+                    if s.startswith("LISTENING"):
+                        self.state, self.t0 = "listening", time.time()
+                    elif s.startswith("TRANSCRIBING") or s.startswith("THINKING"):
+                        self.state = "thinking"
+                    elif s.startswith("SPEAKING"):
+                        self.state = "speaking"
+                    elif s.startswith("READY"):
+                        self.state, self.t0 = "ready", None
+                        self.elapsed = 0.0
+                elif kind == "you":
+                    self.driver_text = text
+                elif kind == "jarvis":
+                    self.eng_text = text
+                self._draw()
         except queue.Empty:
             pass
         if self.winfo_exists():
             self.after(150, self._pump)
+
+    # ----- mouse: drag anywhere, hold footer to talk, right-click quits -----
+    def _down(self, e):
+        self._press = [e.x, e.y, False]
+        if e.y >= getattr(self, "_footer_top", 10**9):
+            self._press[2] = True
+            start_talk()
+
+    def _move(self, e):
+        if not self._press:
+            return
+        dx, dy = e.x - self._press[0], e.y - self._press[1]
+        if abs(dx) + abs(dy) > 6 and self._press[2]:
+            self._press[2] = False  # turned into a drag: cancel talk
+            try:
+                stop_talk()
+            except Exception:
+                pass
+        if not self._press[2]:
+            self.geometry(f"+{e.x_root - self._press[0]}+{e.y_root - self._press[1]}")
+
+    def _up(self, e):
+        if self._press and self._press[2]:
+            try:
+                stop_talk()
+            except Exception:
+                pass
+        self._press = None
 
 
 if __name__ == "__main__":
@@ -448,8 +599,12 @@ if __name__ == "__main__":
     if "--test" in sys.argv:
         # Self-test: overlay + simulated exchange, no mic/hotkey needed.
         ov = Overlay()
+        ov.after(300, lambda: events.put(("status", "LISTENING… release to send")))
         ov.after(400, lambda: (events.put(("you", "who is leading?")),
                                events.put(("jarvis", think("who is leading?")[0]))))
+        ov.after(500, lambda: events.put(("status", "SPEAKING…")))
+        ov.after(1200, lambda: events.put(
+            ("status", f"READY — hold {HOTKEY_LABEL} to talk")))
         ov.after(600, lambda: print("GEOMETRY:", ov.winfo_geometry(),
                                     "MAPPED:", ov.winfo_ismapped()))
         ov.after(2500, ov.destroy)
@@ -457,11 +612,11 @@ if __name__ == "__main__":
         print("SELFTEST_DONE")
     else:
         print("=" * 52, flush=True)
-        print("PIT-WALL JARVIS starting… look at the RIGHT EDGE of", flush=True)
-        print("your screen for the black see-through strip.", flush=True)
+        print("ENGINEER starting… look at the RIGHT EDGE of your screen", flush=True)
+        print("for the black + gold radio card.", flush=True)
         print(f"HOTKEYS: hold {HOTKEY_LABEL} to talk (works in-game),", flush=True)
-        print("  release to send. Backup: hold the TALK button in the strip.", flush=True)
-        print("  Quit: click [X] at the top of the strip.", flush=True)
+        print("  release to send. Backup: hold the card footer.", flush=True)
+        print("  Drag card to move. Right-click card to quit.", flush=True)
         print(f"STT backend: {stt_backend()} "
               "(parakeet v2 if nemo installed, else whisper tiny.en).", flush=True)
         print("First talk downloads the model once, then it is offline.", flush=True)
