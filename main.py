@@ -35,7 +35,8 @@ def client():
                   api_key=os.getenv("NVIDIA_API_KEY"))
 
 def play(path: Path):
-    subprocess.run(["afplay", str(path)], capture_output=True)
+    from platform_ctl import play_audio
+    play_audio(path)
 
 async def speak(text: str):
     voice = os.getenv("TTS_VOICE", "en-AU-WilliamMultilingualNeural")

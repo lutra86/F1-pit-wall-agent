@@ -19,8 +19,10 @@ import threading
 import tkinter as tk
 from pathlib import Path
 
+import platform_ctl
+
 # ---------------- config ----------------
-HOTKEY_HOLD = "alt_r"          # hold-to-talk key: alt_r (Right Option).
+HOTKEY_HOLD = os.getenv("HOTKEY", platform_ctl.default_hotkey())
                                # Other options: "f9", "caps_lock", "ctrl_r".
 HOTKEY_LABEL = {"alt_r": "RIGHT OPTION", "alt_l": "LEFT OPTION",
                 "ctrl_r": "RIGHT CTRL", "ctrl_l": "LEFT CTRL",
@@ -113,7 +115,8 @@ from brain import think  # noqa: E402  (needs sys.path = script dir)
 
 # ---------- speech-out ----------
 def play(path: Path):
-    subprocess.run(["afplay", str(path)], capture_output=True)
+    from platform_ctl import play_audio
+    play_audio(path)
 
 
 _BEEP_DATA, _BEEP_RATE = None, None
@@ -156,9 +159,10 @@ def speak(text: str):
         used = ttsmod.speak_text(text)
         print(f"[jarvis] voiced by {used}.", flush=True)
     except Exception as e:
-        print(f"[jarvis] voice failed ({e}), offline Mac voice…", flush=True)
+        print(f"[jarvis] voice failed ({e}), offline voice…", flush=True)
         events.put(("status", "online voice failed — offline voice…"))
-        subprocess.run(["say", text], capture_output=True)
+        from platform_ctl import offline_say
+        offline_say(text)
     events.put(("status", f"READY — hold {HOTKEY_LABEL} to talk"))
 
 

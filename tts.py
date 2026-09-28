@@ -138,9 +138,10 @@ def speak_text(text: str) -> str:
             print(f"[tts] {name} failed ({str(e)[:120]}), falling back…",
                   flush=True)
             last = e
-    print("[tts] all online/local voices failed, offline Mac voice…",
+    print("[tts] all online/local voices failed, offline voice…",
           flush=True)
-    subprocess.run(["say", text], capture_output=True)
+    from platform_ctl import offline_say
+    offline_say(text)
     return "say"
 
 

@@ -10,8 +10,12 @@ numpy>=1.24.0
 # --- speech-to-text (Parakeet v2 if nemo installed, else whisper) ---
 #   pip install "nemo_toolkit[asr]" torch   # optional Parakeet upgrade
 faster-whisper>=1.0.0
+# --- web + files ---
+ddgs>=9.0.0             # free DuckDuckGo search, no key
 # --- voices (TTS_BACKEND picks primary, auto-falls back down the list) ---
 edge-tts>=6.1.0
 kokoro-onnx>=0.1.0        # local Kokoro-82M q4 (~1-3s, offline, bm_george male)
 soundfile>=0.12.0
 # espeak-ng needed for Kokoro phonemes:  brew install espeak-ng
+# Windows extras (optional):  pip install pycaw   # volume control
+# Linux extras (optional):    sudo apt install playerctl brightnessctl  # media/brightness

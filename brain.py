@@ -11,6 +11,8 @@ except ImportError:
 
 import tools_mac as mac
 import tools_f1 as f1
+import tools_web as web
+import tools_files as desk
 
 BASE_DIR = Path(__file__).parent
 NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct")
@@ -20,6 +22,7 @@ SYSTEM_AUSSIE = (
     "Talk like one: 'copy', 'mate', 'send it', 'box box', 'she'll be right'. "
     "Short radio replies, max 2 sentences. Start key info with 'Copy. '. "
     "You can control volume/media/apps/brightness and read F1 timing. "
+    "You can search the web, read pages, and manage files in the workspace. "
     "If asked to write something, confirm what you wrote.")
 
 MOOD_CHILL = ("The driver is calm and friendly. Match it: warm, encouraging "
@@ -108,11 +111,26 @@ def route(text: str, mood: str = "chill"):
     if m4:
         num = next(g for g in m4.groups() if g)
         return "Copy. " + f1.driver_laps(int(num))
+    m5 = re.search(r"(search|google|look up|look-up|find out)( for)? (.+)", t)
+    if m5:
+        return "Copy. " + web.web_search(m5.group(3))
+    if "latest" in t or "news" in t or "headline" in t:
+        return "Copy. " + web.web_search(text)
+    m6 = re.search(r"(read|open) (page|site|url|link) (\S+)", t)
+    if m6:
+        return "Copy. " + web.read_page(m6.group(3))
+    if "list files" in t or "what files" in t or "show files" in t:
+        return "Copy. " + desk.list_files()
+    m7 = re.search(r"read file (\S+)", t)
+    if m7:
+        return desk.read_file(m7.group(1))
+    m8 = re.search(r"write file (\S+)\s*[:\-]?\s*(.*)", t)
+    if m8:
+        name = m8.group(1).rstrip(":")
+        content = m8.group(2).strip() or text
+        return desk.write_file(name, content)
     if t.startswith("write ") or "write file" in t:
-        p = BASE_DIR / "note.txt"
-        p.write_text(text)
-        return (f"Copy, written to {p.name}. Don't lose your shit over it."
-                if f else f"Copy, written to {p.name}.")
+        return desk.write_file("note.txt", text)
     return None
 
 

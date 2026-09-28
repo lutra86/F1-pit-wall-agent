@@ -1,4 +1,4 @@
-# F1 Engineer — push-to-talk pit-wall voice agent for Mac
+# F1 Engineer — push-to-talk pit-wall voice agent (Mac, Linux, Windows)
 
 Talk to your race engineer while you game. Hold a key, speak, release —
 he answers out loud in a floating F1 team-radio card. Swear at him and
@@ -17,19 +17,19 @@ he swears back. Be nice and he's a mate.
   barrels.
 - 🏁 **Live F1 timing** — positions, laps, weather, sessions via the free
   OpenF1 API (historical, no key).
+- 🌐 **Internet** — free DuckDuckGo search + page reader, no key.
+- 📁 **Computer access** — files sandboxed to `~/Documents/f1-jarvis-files`
+  (list/read/write), cross-platform app/volume/media/brightness controls.
 
 ## Install
 
 ```zsh
-# 1. System tools (mics, beep decode, Kokoro phonemes)
-brew install ffmpeg espeak-ng
-
-# 2. Python deps
-pip install -r requirements.txt
-
-# 3. Your keys
-cp .env.example .env
+bash install.sh        # macOS / Linux  (or install.bat on Windows)
+# then add NVIDIA_API_KEY to .env
 ```
+
+Manual: `brew install ffmpeg espeak-ng` (or apt/winget equivalents),
+`pip install -r requirements.txt`, `cp .env.example .env`.
 
 ## API keys (1 needed)
 
