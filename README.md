@@ -96,7 +96,7 @@ overlays on macOS.
 Inspired by [quick-assistant](https://github.com/sloganking/quick-assistant).
 Timing by [OpenF1](https://openf1.org). Not affiliated with Formula 1.
 
-The radio beep is generated locally on first run (880Hz tone) — bring
-your own F1 sound by replacing `assets/beep.mp3` if you own one.
+The radio beep ships ready to go. Delete `assets/beep.mp3` and the app
+generates a neutral tone instead.
 
 License: MIT.
