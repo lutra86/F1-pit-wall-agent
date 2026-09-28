@@ -33,7 +33,7 @@ STT_BACKEND = os.getenv("STT_BACKEND", "auto")  # auto | parakeet | whisper
 PARAKEET_MODEL = os.getenv("PARAKEET_MODEL", "nvidia/parakeet-tdt-0.6b-v2")
 WHISPER_MODEL = "tiny.en"      # fallback local STT (downloaded once, ~75MB).
 TTS_VOICE = os.getenv("TTS_VOICE", "en-GB-RyanNeural")
-NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.1-70b-instruct")
+NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct")
 SAMPLE_RATE = 16000
 # ----------------------------------------
 

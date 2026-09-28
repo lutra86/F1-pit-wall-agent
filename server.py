@@ -31,7 +31,7 @@ def ask_llm(text: str) -> str:
     c = OpenAI(base_url="https://integrate.api.nvidia.com/v1",
                api_key=os.getenv("NVIDIA_API_KEY"))
     resp = c.chat.completions.create(
-        model=os.getenv("NVIDIA_MODEL", "meta/llama-3.1-70b-instruct"),
+        model=os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct"),
         messages=[{"role": "system", "content": SYSTEM},
                   {"role": "user", "content": text}],
         max_tokens=150, temperature=0.6)

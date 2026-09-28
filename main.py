@@ -91,7 +91,7 @@ def route(text: str) -> str | None:
 def ask_llm(text: str) -> str:
     c = client()
     resp = c.chat.completions.create(
-        model=os.getenv("NVIDIA_MODEL", "meta/llama-3.1-70b-instruct"),
+        model=os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct"),
         messages=[{"role": "system", "content": SYSTEM},
                   {"role": "user", "content": text}],
         max_tokens=150, temperature=0.6)
