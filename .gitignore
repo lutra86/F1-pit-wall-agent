@@ -3,5 +3,6 @@ __pycache__/
 *.pyc
 assets/_tmp.wav
 assets/reply.mp3
+assets/kokoro/
 note.txt
 .DS_Store

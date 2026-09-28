@@ -7,9 +7,12 @@ requests>=2.31.0
 sounddevice>=0.5.0
 pynput>=1.7.0
 numpy>=1.24.0
-# --- speech-to-text (pick one, Parakeet v2 recommended) ---
-# Option A — NVIDIA Parakeet v2 (best accuracy, offline after download):
-#   pip install "nemo_toolkit[asr]" torch
-#   (auto-downloads nvidia/parakeet-tdt-0.6b-v2 on first talk, ~2.4GB)
-# Option B — lightweight fallback whisper:
+# --- speech-to-text (Parakeet v2 if nemo installed, else whisper) ---
+#   pip install "nemo_toolkit[asr]" torch   # optional Parakeet upgrade
 faster-whisper>=1.0.0
+# --- voices (TTS_BACKEND picks primary, auto-falls back down the list) ---
+edge-tts>=6.1.0
+kokoro-onnx>=0.1.0        # local Kokoro-82M q4 (~0.9s, offline, bm_george male)
+soundfile>=0.12.0
+google-cloud-texttospeech>=2.0.0  # Chirp 3 HD en-AU (needs GCP key+billing)
+# espeak-ng needed for Kokoro phonemes:  brew install espeak-ng

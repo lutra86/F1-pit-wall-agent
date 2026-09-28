@@ -148,53 +148,26 @@ def beep_now():
     threading.Thread(target=play, args=(BEEP,), daemon=True).start()
 
 
-async def _speak_stream(text: str):
-    """Stream Edge-TTS audio straight into ffplay: first sound in ~1s
-    instead of waiting for the whole file to synthesize."""
-    import time
-    import edge_tts
-    t0 = time.time()
-    comm = edge_tts.Communicate(text, TTS_VOICE)
-    proc = subprocess.Popen(
-        ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet",
-         "-i", "pipe:0"],
-        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL)
-    first = True
-    async for chunk in comm.stream():
-        if chunk["type"] == "audio":
-            if first:
-                print(f"[jarvis] first audio after {time.time()-t0:.1f}s",
-                      flush=True)
-                first = False
-            proc.stdin.write(chunk["data"])
-    proc.stdin.close()
-    proc.wait()
-
-
-async def _speak_save(text: str):
-    """Fallback: synthesize full file, then play (slower start)."""
-    import edge_tts
-    await edge_tts.Communicate(text, TTS_VOICE).save(str(REPLY_MP3))
-    play(REPLY_MP3)
-
-
 def speak(text: str):
+    """Voice via tts router (chirp -> kokoro -> edge -> say)."""
     events.put(("status", "SPEAKING…"))
     try:
-        print("[jarvis] speaking (streaming)…", flush=True)
-        asyncio.run(_speak_stream(text))
-        print("[jarvis] done speaking.", flush=True)
+        import tts as ttsmod
+        used = ttsmod.speak_text(text)
+        print(f"[jarvis] voiced by {used}.", flush=True)
     except Exception as e:
-        print(f"[jarvis] stream failed ({e}), trying full-file…", flush=True)
-        try:
-            asyncio.run(_speak_save(text))
-        except Exception as e2:
-            print(f"[jarvis] edge-tts failed ({e2}), offline Mac voice…",
-                  flush=True)
-            events.put(("status", "online voice failed — offline voice…"))
-            subprocess.run(["say", text], capture_output=True)
+        print(f"[jarvis] voice failed ({e}), offline Mac voice…", flush=True)
+        events.put(("status", "online voice failed — offline voice…"))
+        subprocess.run(["say", text], capture_output=True)
     events.put(("status", f"READY — hold {HOTKEY_LABEL} to talk"))
+
+
+def preload_voices():
+    try:
+        import tts as ttsmod
+        ttsmod.preload_kokoro()
+    except Exception as e:
+        print(f"[jarvis] voice preload failed: {e}", flush=True)
 
 
 # ---------- talk pipeline ----------
@@ -624,6 +597,7 @@ if __name__ == "__main__":
         print("Security → Input Monitoring → turn ON your Terminal.", flush=True)
         print("=" * 52, flush=True)
         preload_beep()
+        threading.Thread(target=preload_voices, daemon=True).start()
         threading.Thread(target=hotkey_loop, daemon=True).start()
         try:
             Overlay().mainloop()
