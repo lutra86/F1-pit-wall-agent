@@ -97,10 +97,32 @@ def looks_live(text: str) -> bool:
     return any(h in t for h in LIVE_HINTS)
 
 
+def model_check() -> str:
+    """Report the active brain model + live ping."""
+    from openai import OpenAI
+    try:
+        c = OpenAI(base_url="https://integrate.api.nvidia.com/v1",
+                   api_key=os.getenv("NVIDIA_API_KEY"), timeout=20)
+        r = c.chat.completions.create(
+            model=NVIDIA_MODEL,
+            messages=[{"role": "user", "content": "Reply with: online"}],
+            max_tokens=5)
+        heard = r.choices[0].message.content.strip()
+        return (f"Copy, running {NVIDIA_MODEL}, online — it said '{heard}'. "
+                f"Knowledge frozen at training, so I use live tools + web "
+                f"for anything current.")
+    except Exception as e:
+        return (f"Copy, configured {NVIDIA_MODEL} but it's not answering: "
+                f"{str(e)[:100]}")
+
+
 def route(text: str, mood: str = "chill"):
     """Local tools. Feral mood gets matching pit-wall spray."""
     t = text.lower()
     f = (mood == "feral")
+    if any(k in t for k in ("which model", "what model", "model check",
+                            "are you running", "muse spark")):
+        return model_check()
     m = re.search(r"volume.*?(\d+)", t)
     if "volume" in t and m:
         base = mac.set_volume(int(m.group(1)))
