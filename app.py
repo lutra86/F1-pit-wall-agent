@@ -32,7 +32,7 @@ HOTKEY_LABEL = {"alt_r": "RIGHT OPTION", "alt_l": "LEFT OPTION",
 STT_BACKEND = os.getenv("STT_BACKEND", "auto")  # auto | parakeet | whisper
 PARAKEET_MODEL = os.getenv("PARAKEET_MODEL", "nvidia/parakeet-tdt-0.6b-v2")
 WHISPER_MODEL = "tiny.en"      # fallback local STT (downloaded once, ~75MB).
-TTS_VOICE = os.getenv("TTS_VOICE", "en-AU-WilliamNeural")
+TTS_VOICE = os.getenv("TTS_VOICE", "en-AU-WilliamMultilingualNeural")
 NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct")
 SAMPLE_RATE = 16000
 # ----------------------------------------
@@ -137,21 +137,69 @@ def speak(text: str):
 
 
 # ---------- talk pipeline ----------
+def pick_input_device():
+    """Prefer a real mic (BlackHole virtual devices cause -9986 errors)."""
+    import sounddevice as sd
+    try:
+        for i, d in enumerate(sd.query_devices()):
+            name = d["name"].lower()
+            if d["max_input_channels"] > 0 and (
+                    "microphone" in name or "macbook" in name):
+                return i
+    except Exception:
+        pass
+    return None
+
+
 def start_talk():
     if recording["active"]:
         return
-    recording["active"] = True
-    recording["frames"] = []
     events.put(("status", "LISTENING… release to send"))
     threading.Thread(target=play, args=(BEEP,), daemon=True).start()
 
+    import time
     import sounddevice as sd
-    def cb(indata, frames, time, status):
+
+    def cb(indata, frames, time_info, status):
         if recording["active"]:
             recording["frames"].append(indata.copy())
-    recording["stream"] = sd.InputStream(samplerate=SAMPLE_RATE, channels=1,
-                                         dtype="float32", callback=cb)
-    recording["stream"].start()
+
+    # close any stale stream from a previous talk
+    try:
+        recording.get("stream") and recording["stream"].close()
+    except Exception:
+        pass
+
+    dev = pick_input_device()
+    stream, rate, last_err = None, SAMPLE_RATE, None
+    candidates = [SAMPLE_RATE]
+    try:
+        native = sd.query_devices(dev, "input")["default_samplerate"]
+        if native != SAMPLE_RATE:
+            candidates.append(native)
+    except Exception:
+        pass
+    for r in candidates:
+        try:
+            kw = dict(samplerate=r, channels=1, dtype="float32",
+                      callback=cb)
+            if dev is not None:
+                kw["device"] = dev
+            stream = sd.InputStream(**kw)
+            stream.start()
+            rate = r
+            break
+        except Exception as e:
+            last_err = e
+            time.sleep(0.3)
+    if stream is None:
+        print(f"[jarvis] mic open failed: {last_err}", flush=True)
+        events.put(("status", "Mic busy — release key, wait a sec, hold again"))
+        return
+    recording["stream"] = stream
+    recording["rate"] = rate
+    recording["frames"] = []
+    recording["active"] = True
 
 
 def stop_talk():
@@ -176,6 +224,11 @@ def _pipeline():
         events.put(("status", f"READY — hold {HOTKEY_LABEL} to talk"))
         return
     audio = np.concatenate(recording["frames"], axis=0).flatten()
+    rate = recording.get("rate", SAMPLE_RATE)
+    if rate != SAMPLE_RATE:  # resample device-native rate to 16k for STT
+        n = int(len(audio) * SAMPLE_RATE / rate)
+        audio = np.interp(np.linspace(0, len(audio), n),
+                          np.arange(len(audio)), audio).astype(np.float32)
     secs = len(audio) / SAMPLE_RATE
     print(f"[jarvis] got {secs:.1f}s audio, transcribing…", flush=True)
     events.put(("status", f"TRANSCRIBING {secs:.0f}s audio…"))
@@ -222,12 +275,19 @@ def hotkey_loop():
     target = key_map.get(HOTKEY_HOLD, Key.alt_r)
 
     def on_press(key):
-        if key == target:
-            start_talk()
+        try:
+            if key == target:
+                start_talk()
+        except Exception as e:
+            print(f"[jarvis] talk start failed: {e}", flush=True)
+            events.put(("status", f"talk failed: {e}"))
 
     def on_release(key):
-        if key == target:
-            stop_talk()
+        try:
+            if key == target:
+                stop_talk()
+        except Exception as e:
+            print(f"[jarvis] talk stop failed: {e}", flush=True)
 
     try:
         with keyboard.Listener(on_press=on_press,

@@ -38,7 +38,7 @@ def play(path: Path):
     subprocess.run(["afplay", str(path)], capture_output=True)
 
 async def speak(text: str):
-    voice = os.getenv("TTS_VOICE", "en-AU-WilliamNeural")
+    voice = os.getenv("TTS_VOICE", "en-AU-WilliamMultilingualNeural")
     await edge_tts.Communicate(text, voice).save(str(OUT))
     play(OUT)
 
