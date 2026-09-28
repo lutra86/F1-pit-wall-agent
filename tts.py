@@ -17,6 +17,10 @@ _koko = None
 def _play_pcm(samples, rate):
     import sounddevice as sd
     import numpy as np
+    try:
+        sd.stop()  # never overlap beep/previous reply
+    except Exception:
+        pass
     sd.play(np.asarray(samples, dtype="float32"), rate)
     sd.wait()
 
@@ -92,8 +96,11 @@ def speak_kokoro(text: str):
         out.append(np.asarray(audio).ravel())
     samples = np.concatenate(out).astype(np.float32)
     rate = 24000
+    dur = len(samples) / rate
     print(f"[tts] kokoro synth took {time.time()-t0:.2f}s "
-          f"for {len(samples)/rate:.1f}s audio", flush=True)
+          f"for {dur:.1f}s audio", flush=True)
+    if dur < 0.5 and len(text) > 20:
+        raise RuntimeError("kokoro produced no audio, falling back")
     _play_pcm(samples, rate)
     return "kokoro"
 
@@ -108,15 +115,19 @@ async def _edge_stream(text: str):
         stderr=subprocess.DEVNULL)
     t0 = time.time()
     first = True
+    got = 0
     async for chunk in comm.stream():
         if chunk["type"] == "audio":
             if first:
                 print(f"[tts] edge first audio after {time.time()-t0:.1f}s",
                       flush=True)
                 first = False
+            got += len(chunk["data"])
             proc.stdin.write(chunk["data"])
     proc.stdin.close()
     proc.wait()
+    if got == 0:
+        raise RuntimeError("edge produced no audio, falling back")
 
 
 def speak_edge(text: str):

@@ -51,3 +51,30 @@ def weather(session_key: str = "latest") -> str:
                 f"humidity {w.get('humidity')}%, rain {w.get('rainfall')}.")
     except Exception as e:
         return f"Weather unavailable: {e}"
+
+
+def championship(top_n: int = 3) -> str:
+    """Real drivers' championship standings (constructors endpoint is down)."""
+    try:
+        r = requests.get(f"{BASE}/championship_drivers",
+                         params={"session_key": "latest"}, timeout=10)
+        r.raise_for_status()
+        rows = sorted(r.json(), key=lambda x: x["position_current"])[:top_n]
+        d = requests.get(f"{BASE}/drivers",
+                         params={"session_key": "latest"},
+                         timeout=10).json()
+        names = {x["driver_number"]: x["broadcast_name"] for x in d}
+        bits = [f"{names.get(x['driver_number'], 'car '+str(x['driver_number']))} "
+                f"{x['points_current']}pts" for x in rows]
+        return "Championship: " + ", ".join(bits)
+    except Exception as e:
+        return f"Championship unavailable: {e}"
+
+
+def live_brief() -> str:
+    """One-block 2026 reality check for the LLM: latest session + order."""
+    try:
+        return (latest_session_info() + " || " +
+                session_positions(top_n=5) + " || " + weather())
+    except Exception as e:
+        return f"Paddock feed down: {e}"

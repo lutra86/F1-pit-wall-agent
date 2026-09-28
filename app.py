@@ -164,11 +164,6 @@ def speak(text: str):
         events.put(("status", "online voice failed — offline voice…"))
         from platform_ctl import offline_say
         offline_say(text)
-    try:
-        if ui is not None:
-            ui.drop_back()  # behind windows again until next press
-    except Exception:
-        pass
     events.put(("status", f"READY — hold {HOTKEY_LABEL} to talk"))
 
 
@@ -632,8 +627,7 @@ if __name__ == "__main__":
         try:
             ov = Overlay()
             ui = ov
-            ov.drop_back()  # start behind windows; pops up on press
-            ov.mainloop()
+            ov.mainloop()  # card stays on top the whole run
         except Exception:
             import traceback
             traceback.print_exc()

@@ -23,7 +23,9 @@ SYSTEM_AUSSIE = (
     "Short radio replies, max 2 sentences. Start key info with 'Copy. '. "
     "You can control volume/media/apps/brightness and read F1 timing. "
     "You can search the web, read pages, and manage files in the workspace. "
-    "If asked to write something, confirm what you wrote.")
+    "If asked to write something, confirm what you wrote. "
+    "Never bluff: if the provided info doesn't cover the question, say "
+    "'no data on that one, mate' instead of guessing.")
 
 MOOD_CHILL = ("The driver is calm and friendly. Match it: warm, encouraging "
               "Aussie race-engineer, light slang, no swearing.")
@@ -91,10 +93,24 @@ LIVE_HINTS = ("latest", "now", "today", "tonight", "current", "live",
               "score", "standing", "winner", "who won", "news", "weather",
               "happening", "result")
 
+F1_WORDS = ("f1", "formula 1", "formula one", "grand prix", "verstappen",
+            "norris", "piastri", "russell", "leclerc", "hamilton", "alonso",
+            "tsunoda", "antonelli", "bearman", "hadjar", "mclaren", "ferrari",
+            "red bull", "mercedes", "williams", "alpine", "aston martin",
+            "sauber", "rb ", "drs", "pit stop", "pole", "qualifying",
+            "podium", "championship", "constructor", "safety car", "box box",
+            "tyre", "tire", "downforce", "understeer", "oversteer", "paddock",
+            "team radio", "driver", "lap")
+
 
 def looks_live(text: str) -> bool:
     t = text.lower()
     return any(h in t for h in LIVE_HINTS)
+
+
+def looks_f1(text: str) -> bool:
+    t = " " + text.lower() + " "
+    return any(w in t for w in F1_WORDS)
 
 
 def model_check() -> str:
@@ -136,7 +152,9 @@ def route(text: str, mood: str = "chill"):
     m3 = re.search(r"open (\w+)", t)
     if m3:
         return mac.open_app(m3.group(1).capitalize())
-    if "position" in t or "standings" in t or "who is leading" in t:
+    if any(k in t for k in ("championship", "standings", "constructor")):
+        return "Copy. " + f1.championship()
+    if "position" in t or "who is leading" in t:
         r = "Copy. " + f1.session_positions()
         return (r + " Happy now?" if f else r)
     if "weather" in t or "track temp" in t:
@@ -178,12 +196,14 @@ def think(text: str):
     t0 = time.time()
     m5 = re.search(r"(search|google|look up|look-up|find out)( for)? (.+)",
                    text.lower())
+    parts = []
+    if looks_f1(text):  # every F1 question gets 2026 paddock reality
+        parts.append("Paddock now: " + f1.live_brief())
     if m5:
-        ctx = web.web_search(m5.group(3), n=5)
+        parts.append(web.web_search(m5.group(3), n=5))
     elif looks_live(text):
-        ctx = web.web_search(text, n=5)
-    else:
-        ctx = ""
+        parts.append(web.web_search(text, n=5))
+    ctx = " ".join(parts)
     reply = ask_llm(text, mood, context=ctx)
     print(f"[jarvis] brain took {time.time()-t0:.1f}s", flush=True)
     if mood == "feral":
